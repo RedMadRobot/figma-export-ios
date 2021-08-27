@@ -58,7 +58,7 @@ ios:
     assetsFolder: Icons
     # Icon name style: camelCase or snake_case
     nameStyle: camelCase
-    # [optional] An array of icon names that will supports Preseve Vecotor Data
+    # [optional] An array of icon names that will supports Preserve Vector Data
     preservesVectorRepresentation:
     - ic24TabBarMain
     - ic24TabBarEvents

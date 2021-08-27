@@ -38,6 +38,10 @@ common:
     nameValidateRegexp: '^(ic)_(\d\d)_([a-z0-9_]+)$' # RegExp pattern for: ic_24_icon_name, ic_24_icon
     # [optional] RegExp pattern for replacing. Supports only $n
     nameReplaceRegexp: 'icon_$2_$1'
+    # [optional] Extract light and dark mode icons from the lightFileId specified in the figma params. Defaults to false
+    useSingleFile: true
+    # [optional] If useSingleFile is true, customize the suffix to denote a dark mode icons. Defaults to '_dark'
+    darkModeSuffix: '_dark'
   # [optional]
   images:
     # [optional]Name of the Figma's frame where image components are located
@@ -46,6 +50,10 @@ common:
     nameValidateRegexp: '^(img)_([a-z0-9_]+)$' # RegExp pattern for: img_image_name
     # [optional] RegExp pattern for replacing. Supports only $n
     nameReplaceRegexp: 'image_$2'
+    # [optional] Extract light and dark mode icons from the lightFileId specified in the figma params. Defaults to false
+    useSingleFile: true
+    # [optional] If useSingleFile is true, customize the suffix to denote a dark mode icons. Defaults to '_dark'
+    darkModeSuffix: '_dark'
   # [optional]
   typography:
     # [optional] RegExp pattern for text style name validation before exporting

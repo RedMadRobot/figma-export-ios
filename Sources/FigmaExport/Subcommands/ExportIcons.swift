@@ -49,7 +49,7 @@ extension FigmaExportCommand {
 
             logger.info("Fetching icons info from Figma. Please wait...")
             let loader = ImagesLoader(client: client, params: params, platform: .ios, logger: logger)
-            let images = try loader.loadIcons(filter: filter)
+            let imagesTuple = try loader.loadIcons(filter: filter)
 
             logger.info("Processing icons...")
             let processor = ImagesProcessor(
@@ -58,9 +58,11 @@ extension FigmaExportCommand {
                 nameReplaceRegexp: params.common?.icons?.nameReplaceRegexp,
                 nameStyle: iconsParams.nameStyle
             )
-            let icons = try processor.process(assets: images).get()
+
+            let icons = processor.process(light: imagesTuple.light, dark: imagesTuple.dark)
 
             let assetsURL = ios.xcassetsPath.appendingPathComponent(iconsParams.assetsFolder)
+
             let output = XcodeImagesOutput(
                 assetsFolderURL: assetsURL,
                 assetsInMainBundle: ios.xcassetsInMainBundle,
@@ -72,7 +74,7 @@ extension FigmaExportCommand {
                 renderMode: iconsParams.renderMode)
             
             let exporter = XcodeIconsExporter(output: output)
-            let localAndRemoteFiles = try exporter.export(icons: icons, append: filter != nil)
+            let localAndRemoteFiles = try exporter.export(icons: icons.get(), append: filter != nil)
             if filter == nil {
                 try? FileManager.default.removeItem(atPath: assetsURL.path)
             }
@@ -109,7 +111,7 @@ extension FigmaExportCommand {
             // 1. Get Icons info
             logger.info("Fetching icons info from Figma. Please wait...")
             let loader = ImagesLoader(client: client, params: params, platform: .android, logger: logger)
-            let images = try loader.loadIcons(filter: filter)
+            let imagesTuple = try loader.loadIcons(filter: filter)
 
             // 2. Proccess images
             logger.info("Processing icons...")
@@ -119,20 +121,29 @@ extension FigmaExportCommand {
                 nameReplaceRegexp: params.common?.icons?.nameReplaceRegexp,
                 nameStyle: .snakeCase
             )
-            let icons = try processor.process(light: images, dark: nil).get()
+
+            let icons = try processor.process(light: imagesTuple.light, dark: imagesTuple.dark).get()
             
             // Create empty temp directory
-            let tempDirectoryURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let tempDirectoryLightURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let tempDirectoryDarkURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         
             // 3. Download SVG files to user's temp directory
             logger.info("Downloading remote files...")
             let remoteFiles = icons.flatMap { asset -> [FileContents] in
-                asset.light.images.map { image -> FileContents in
+                let lightFiles = asset.light.images.map { image -> FileContents in
                     let fileURL = URL(string: "\(image.name).svg")!
-                    let dest = Destination(directory: tempDirectoryURL, file: fileURL)
+                    let dest = Destination(directory: tempDirectoryLightURL, file: fileURL)
                     return FileContents(destination: dest, sourceURL: image.url)
                 }
+                let darkFiles = asset.dark?.images.map { image -> FileContents in
+                    let fileURL = URL(string: "\(image.name).svg")!
+                    let dest = Destination(directory: tempDirectoryDarkURL, file: fileURL)
+                    return FileContents(destination: dest, sourceURL: image.url, dark: true)
+                } ?? []
+                return lightFiles + darkFiles
             }
+
             var localFiles = try fileDownloader.fetch(files: remoteFiles)
             
             // 4. Move downloaded SVG files to new empty temp directory
@@ -140,16 +151,23 @@ extension FigmaExportCommand {
             
             // 5. Convert all SVG to XML files
             logger.info("Converting SVGs to XMLs...")
-            try svgFileConverter.convert(inputDirectoryUrl: tempDirectoryURL)
+            try svgFileConverter.convert(inputDirectoryUrl: tempDirectoryLightURL)
+            logger.info("Converting dark SVGs to XMLs...")
+            try svgFileConverter.convert(inputDirectoryUrl: tempDirectoryDarkURL)
             
             // Create output directory main/res/custom-directory/drawable/
-            let outputDirectory = URL(fileURLWithPath: android.mainRes
-                                        .appendingPathComponent(androidIcons.output)
-                                        .appendingPathComponent("drawable", isDirectory: true).path)
+            let lightDirectory = URL(fileURLWithPath: android.mainRes
+                .appendingPathComponent(androidIcons.output)
+                .appendingPathComponent("drawable", isDirectory: true).path)
+
+            let darkDirectory = URL(fileURLWithPath: android.mainRes
+                .appendingPathComponent(androidIcons.output)
+                .appendingPathComponent("drawable-night", isDirectory: true).path)
             
             if filter == nil {
                 // Clear output directory
-                try? FileManager.default.removeItem(atPath: outputDirectory.path)
+                try? FileManager.default.removeItem(atPath: lightDirectory.path)
+                try? FileManager.default.removeItem(atPath: darkDirectory.path)
             }
             
             // 6. Move XML files to main/res/drawable/
@@ -162,15 +180,20 @@ extension FigmaExportCommand {
                 let fileURL = fileContents.destination.file
                     .deletingPathExtension()
                     .appendingPathExtension("xml")
-                
+
+                let directory = fileContents.dark ? darkDirectory : lightDirectory
                 return FileContents(
-                    destination: Destination(directory: outputDirectory, file: fileURL),
+                    destination: Destination(directory: directory, file: fileURL),
                     dataFile: source
                 )
             }
 
-            logger.info("Writting files to Android Studio project...")
+            logger.info("Writing files to Android Studio project...")
             try fileWritter.write(files: localFiles)
+
+            logger.info("Remove temp directory...")
+            try? FileManager.default.removeItem(at: tempDirectoryLightURL)
+            try? FileManager.default.removeItem(at: tempDirectoryDarkURL)
 
             checkForUpdate(logger: logger)
             

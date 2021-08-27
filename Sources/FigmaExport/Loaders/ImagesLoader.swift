@@ -26,9 +26,16 @@ final class ImagesLoader {
         self.logger = logger
     }
 
-    func loadIcons(filter: String? = nil) throws -> [ImagePack] {
+    func loadIcons(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
+        if let useSingleFile = params.common?.icons?.useSingleFile, useSingleFile {
+            return try loadIconsFromSingleFile(filter: filter)
+        } else {
+            return try loadIconsFromLightAndDarkFile(filter: filter)
+        }
+    }
+
+    private func loadIconsFromSingleFile(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
         let formatParams: FormatParams
-        
         switch (platform, params.ios?.icons?.format) {
         case (.android, _),
              (.ios, .svg):
@@ -36,16 +43,89 @@ final class ImagesLoader {
         case (.ios, _):
             formatParams = PDFParams()
         }
-        
-        return try _loadImages(
+
+        let icons = try _loadImages(
             fileId: params.figma.lightFileId,
             frameName: iconsFrameName,
             params: formatParams,
             filter: filter
         )
+        let darkSuffix = params.common?.icons?.darkModeSuffix ?? "_dark"
+        let lightIcons = icons
+            .filter { !$0.name.hasSuffix(darkSuffix) }
+        let darkIcons = icons
+            .filter { $0.name.hasSuffix(darkSuffix) }
+            .map { icon -> ImagePack in
+                var newIcon = icon
+                newIcon.name = String(icon.name.dropLast(darkSuffix.count))
+                return newIcon
+            }
+        return (lightIcons, darkIcons)
+    }
+
+    private func loadIconsFromLightAndDarkFile(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
+        let formatParams: FormatParams
+        switch (platform, params.ios?.icons?.format) {
+        case (.android, _),
+             (.ios, .svg):
+            formatParams = SVGParams()
+        case (.ios, _):
+            formatParams = PDFParams()
+        }
+
+        let lightIcons = try _loadImages(
+            fileId: params.figma.lightFileId,
+            frameName: iconsFrameName,
+            params: formatParams,
+            filter: filter
+        )
+        let darkIcons = try params.figma.darkFileId.map {
+            try _loadImages(
+                fileId: $0,
+                frameName: iconsFrameName,
+                params: formatParams,
+                filter: filter)
+        }
+        return (lightIcons, darkIcons)
     }
 
     func loadImages(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
+        if let useSingleFile = params.common?.images?.useSingleFile, useSingleFile {
+            return try loadImagesFromSingleFile(filter: filter)
+        } else {
+            return try loadImagesFromLightAndDarkFile(filter: filter)
+        }
+    }
+
+    private func loadImagesFromSingleFile(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
+        let darkSuffix = params.common?.images?.darkModeSuffix ?? "_dark"
+        switch (platform, params.android?.images?.format) {
+        case (.android, .png), (.android, .webp), (.ios, .none):
+            let images = try loadPNGImages(
+                fileId: params.figma.lightFileId,
+                frameName: imagesFrameName,
+                filter: filter,
+                platform: platform)
+            let lightImages = images
+                .filter { !$0.name.hasSuffix(darkSuffix) }
+            let darkImages = images
+                .filter { $0.name.hasSuffix(darkSuffix) }
+            return (lightImages, darkImages)
+        default:
+            let pack = try _loadImages(
+                fileId: params.figma.lightFileId,
+                frameName: imagesFrameName,
+                params: SVGParams(),
+                filter: filter)
+            let lightPack = pack
+                .filter { !$0.name.hasSuffix(darkSuffix) }
+            let darkPack = pack
+                .filter { $0.name.hasSuffix(darkSuffix) }
+            return (lightPack, darkPack)
+        }
+    }
+
+    private func loadImagesFromLightAndDarkFile(filter: String? = nil) throws -> (light: [ImagePack], dark: [ImagePack]?) {
         switch (platform, params.android?.images?.format) {
         case (.android, .png), (.android, .webp), (.ios, .none):
             let lightImages = try loadPNGImages(
