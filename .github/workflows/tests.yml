@@ -33,3 +33,24 @@ jobs:
         uses: actions/checkout@v2
       - name: Build and test
         run: swift test --disable-automatic-resolution --skip XcodeExportTests
+
+  test-release-linux:
+    name: FOR TESTING PURPOSE ONLY
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build
+        run: |
+          swift --version
+          swift build -c release
+          cp ./.build/release/figma-export ./Release/figma-export
+          cp -r ./.build/release/figma-export_AndroidExport.resources ./Release/figma-export_AndroidExport.resources
+          zip -r figma-export.zip Release LICENSE --verbose
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: figma-export.zip
+          path: figma-export.zip

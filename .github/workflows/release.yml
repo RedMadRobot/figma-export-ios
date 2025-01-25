@@ -44,3 +44,24 @@ jobs:
         run: gh workflow run bump-formula.yml --repo RedMadRobot/homebrew-formulae --field formula=figma-export --field version=${{ github.event.release.tag_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
+
+  release-linux:
+    name: Linux release
+    runs-on: ubuntu-22.04
+    container:
+      image: swift:5.7.1-jammy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Build
+        run: |
+          swift build -c release
+          cp ./.build/release/figma-export ./Release/figma-export
+          cp -r ./.build/release/figma-export_AndroidExport.resources ./Release/figma-export_AndroidExport.resources
+          zip -r figma-export.zip Release LICENSE
+
+      - name: "Upload assets to a release"
+        run: gh release upload ${{ github.event.release.tag_name }} figma-export-linux.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
